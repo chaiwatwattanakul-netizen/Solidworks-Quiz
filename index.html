@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolidWorks Basic Quiz - Firebase Integrated</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap');
+        body { font-family: 'Sarabun', sans-serif; overflow-x: hidden; }
+        .hidden { display: none; }
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center p-4">
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center z-[100]">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-blue-500 mb-4"></div>
+        <p id="loading-text">กำลังเชื่อมต่อฐานข้อมูล...</p>
+        <button id="btn-skip-loading" class="mt-6 text-slate-500 hover:text-blue-400 text-sm underline hidden">กดที่นี่เพื่อเข้าสู่ระบบ (ออฟไลน์โหมด)</button>
+    </div>
+
+    <!-- Start Page -->
+    <div id="start-page" class="max-w-md w-full bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 hidden fade-in relative">
+        <button id="btn-admin-login" class="absolute top-4 right-4 text-xs text-slate-600 hover:text-blue-400 transition cursor-pointer">ผู้สอน</button>
+        <div class="text-center mb-8 mt-4">
+            <h1 class="text-3xl font-bold text-blue-400 mb-2">SolidWorks Basic Quiz</h1>
+            <p class="text-slate-400 font-light mb-2">แบบทดสอบพื้นฐาน SolidWorks สำหรับผู้เริ่มต้น</p>
+            <div class="inline-block bg-slate-700/50 border border-slate-600 rounded-full px-4 py-1 mt-2">
+                <p class="text-yellow-400 text-sm font-semibold">จำนวนข้อสอบทั้งหมด: <span id="display-total-start">0</span> ข้อ</p>
+            </div>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm mb-1 text-slate-300">ชื่อ-นามสกุล</label>
+                <input type="text" id="student-name" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none text-white" placeholder="ระบุชื่อของคุณ">
+            </div>
+            <div>
+                <label class="block text-sm mb-1 text-slate-300">รหัสนักศึกษา</label>
+                <input type="text" id="student-id" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none text-white" placeholder="ระบุรหัสประจำตัว">
+            </div>
+            <button id="btn-start" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition-all transform active:scale-95 mt-4 cursor-pointer">เข้าสู่บททดสอบ</button>
+        </div>
+        <p id="db-status" class="text-center text-xs text-green-500 mt-6 font-mono">Firebase Status: Connected ✅</p>
+    </div>
+
+    <!-- Admin Dashboard Page -->
+    <div id="admin-page" class="max-w-5xl w-full bg-slate-800 p-6 md:p-8 rounded-2xl shadow-2xl border border-slate-700 hidden fade-in">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-slate-700 pb-4">
+            <div>
+                <h2 class="text-2xl font-bold text-blue-400 font-sarabun">ระบบรายงานผลคะแนน (ผู้สอน)</h2>
+                <p class="text-slate-400 text-sm mt-1">ข้อมูลถูกจัดเก็บและดึงมาจาก Firebase แบบ Real-time</p>
+            </div>
+            <div class="flex gap-2 w-full md:w-auto">
+                <button id="btn-refresh-data" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-bold transition flex items-center justify-center gap-2 cursor-pointer text-sm">
+                    รีเฟรชข้อมูล
+                </button>
+                <button id="btn-export-all" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold transition flex items-center justify-center gap-2 cursor-pointer text-sm shadow-lg">
+                    ดาวน์โหลด Excel (ทุกคน)
+                </button>
+                <button id="btn-close-admin" class="bg-red-900/50 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition flex items-center justify-center cursor-pointer text-sm border border-red-700">
+                    ปิด
+                </button>
+            </div>
+        </div>
+        
+        <div class="overflow-x-auto bg-slate-900 rounded-lg border border-slate-700 max-h-[60vh] overflow-y-auto">
+            <table class="w-full text-left border-collapse text-sm min-w-[800px]">
+                <thead class="sticky top-0 bg-slate-700 text-slate-300 shadow-md">
+                    <tr>
+                        <th class="p-3 border-b border-slate-600">วันที่-เวลาส่ง</th>
+                        <th class="p-3 border-b border-slate-600">รหัสนักศึกษา</th>
+                        <th class="p-3 border-b border-slate-600">ชื่อ-นามสกุล</th>
+                        <th class="p-3 border-b border-slate-600">คะแนน</th>
+                        <th class="p-3 border-b border-slate-600">เวลาที่ใช้</th>
+                        <th class="p-3 border-b border-slate-600">สลับจอ (ครั้ง)</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-table-body" class="text-slate-300 divide-y divide-slate-700/50">
+                    <tr><td colspan="6" class="p-8 text-center text-slate-500">กำลังโหลดข้อมูล...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Quiz Page -->
+    <div id="quiz-page" class="max-w-2xl w-full bg-slate-800 p-6 md:p-10 rounded-2xl shadow-2xl border border-slate-700 hidden fade-in">
+        <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+            <div class="text-lg">
+                <span class="text-blue-400 font-bold">ข้อที่:</span>
+                <span id="current-question-num" class="text-xl font-bold">1</span><span id="total-questions-num" class="text-slate-500"> / 5</span>
+            </div>
+            <div id="timer" class="text-orange-400 font-mono text-2xl font-bold">00:00</div>
+        </div>
+        <div id="question-container" class="mb-8">
+            <h2 id="question-text" class="text-xl md:text-2xl font-semibold mb-8 leading-snug font-sarabun">กำลังโหลดคำถาม...</h2>
+            <div id="options-container" class="grid grid-cols-1 gap-3"></div>
+        </div>
+        <button id="btn-next" class="w-full transition-all duration-300" disabled>กรุณาเลือกคำตอบ</button>
+    </div>
+
+    <!-- Result Page -->
+    <div id="result-page" class="max-w-md w-full bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 hidden fade-in text-center">
+        <div class="mb-6">
+            <div id="status-icon" class="inline-flex items-center justify-center w-20 h-20 bg-green-500/20 text-green-500 rounded-full mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h2 class="text-3xl font-bold text-white font-sarabun">ส่งข้อสอบแล้ว!</h2>
+        </div>
+
+        <div class="bg-slate-900/50 border border-slate-700 rounded-2xl p-6 mb-6 text-left space-y-3">
+            <div class="flex justify-between items-center">
+                <span class="text-slate-400">นักศึกษา:</span>
+                <span id="res-name" class="font-semibold text-blue-400"></span>
+            </div>
+            <div class="flex justify-between items-center border-t border-slate-800 pt-2">
+                <span class="text-slate-400">รหัส:</span>
+                <span id="res-id" class="font-semibold text-blue-400"></span>
+            </div>
+            <div class="flex justify-between items-center border-t border-slate-800 pt-2 text-lg">
+                <span class="text-slate-400 font-sarabun">คะแนน:</span>
+                <span class="text-2xl font-bold text-green-400"><span id="res-score"></span> / <span id="res-total"></span></span>
+            </div>
+        </div>
+
+        <p id="save-status" class="text-sm text-slate-400 mb-4 italic">กำลังบันทึกคะแนน...</p>
+        <div class="space-y-2 font-sarabun">
+            <!-- ปุ่มโหลดใบเสร็จรายบุคคล ซ่อนไว้เผื่ออาจารย์ไม่อยากให้นักศึกษาโหลดเอง -->
+            <button onclick="location.reload()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition cursor-pointer">กลับหน้าหลัก</button>
+        </div>
+    </div>
+
+    <!-- Cheat Modal -->
+    <div id="cheat-modal" class="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-red-600 p-8 rounded-2xl text-center max-w-sm border-2 border-red-400 shadow-2xl">
+            <h3 class="text-2xl font-bold mb-2 font-sarabun">ห้ามสลับหน้าจอ!</h3>
+            <p class="text-red-100 mb-6 font-light font-sarabun">ระบบตรวจพบการสลับหน้าต่าง พฤติกรรมนี้จะถูกบันทึกเพื่อตรวจสอบ</p>
+            <button onclick="document.getElementById('cheat-modal').classList.add('hidden')" class="bg-white text-red-600 px-8 py-3 rounded-xl font-bold shadow-lg cursor-pointer hover:bg-red-50 transition">ฉันจะกลับไปทำต่อ</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ==========================================
+        // ข้อสอบ SolidWorks 100 ข้อ
+        // ==========================================
+        const masterQuestions = [
+            { q: "การใช้คำสั่ง 'Save As' กับ 'Save as Copy' ต่างกันอย่างไร?", options: ["ไม่ต่างกัน", "Save as Copy จะไม่เปลี่ยนไฟล์ที่เปิดทำงานอยู่ไปเป็นไฟล์ใหม่", "Copy จะลบไฟล์เก่าทิ้ง", "Save As ใช้เซฟเป็นภาพได้อย่างเดียว"], correct: 1 },
+            { q: "SolidWorks เป็นโปรแกรมออกแบบประเภทใด?", options: ["Raster Design", "Parametric 3D CAD", "Video Editing", "Accounting Software"], correct: 1 },
+            { q: "หากต้องการลดขนาดไฟล์ Assembly ขนาดใหญ่เพื่อส่งทางอีเมล ควรทำอย่างไร?", options: ["ลบชิ้นส่วนทิ้ง", "ทำเป็น Zip หรือใช้ Pack and Go", "เปลี่ยนสีให้เป็นสีขาว", "เปลี่ยนหน่วยเป็นมิลลิเมตร"], correct: 1 },
+            { q: "การ Backup ไฟล์งานควรทำบ่อยแค่ไหน?", options: ["ปีละครั้ง", "เดือนละครั้ง", "สม่ำเสมอหรือใช้ระบบ Cloud/PDM", "ไม่ต้องทำเลย"], correct: 2 },
+            { q: "SolidWorks เวอร์ชั่นใหม่ (เช่น 2024) สามารถเปิดไฟล์ที่เซฟจากเวอร์ชั่นเก่า (เช่น 2020) ได้หรือไม่?", options: ["เปิดไม่ได้เด็ดขาด", "เปิดได้ปกติ", "เปิดได้แต่ต้องจ่ายเงินเพิ่ม", "เปิดได้แต่ไฟล์จะกลายเป็นรูปภาพ"], correct: 1 },
+            { q: "แถบเครื่องมือด้านบนที่มีคำสั่ง Sketch และ Features เรียกว่าอะไร?", options: ["Task Pane", "CommandManager", "FeatureManager", "Heads-up Toolbar"], correct: 1 },
+            { q: "ปุ่มลัด (Shortcut) ใดที่ใช้เรียกวงกลมเมนู (S-Key) ขึ้นมาเพื่อความรวดเร็ว?", options: ["S", "X", "Spacebar", "C"], correct: 0 },
+            { q: "พื้นที่แสดงลำดับการสร้างชิ้นงานด้านซ้ายมือเรียกว่าอะไร?", options: ["Command Tree", "FeatureManager Design Tree", "PropertyManager", "ConfigurationManager"], correct: 1 },
+            { q: "หากต้องการเปลี่ยนหน่วยวัด (Unit) อย่างรวดเร็ว ควรดูที่ส่วนใดของจอภาพ?", options: ["มุมซ้ายบน", "มุมขวาล่าง (Status Bar)", "กลางจอ", "Task Pane"], correct: 1 },
+            { q: "คำสั่ง 'Search Commands' ใน SolidWorks มีประโยชน์อย่างไร?", options: ["หาไฟล์ในเครื่อง", "ค้นหาคำสั่งที่จำตำแหน่งไม่ได้และเรียกใช้ได้ทันที", "หาความช่วยเหลือใน Google", "ค้นหาชิ้นส่วนในโกดัง"], correct: 1 },
+            { q: "Heads-up View Toolbar คือส่วนที่อยู่ตำแหน่งใด?", options: ["ด้านล่างสุด", "ด้านซ้ายมือ", "กึ่งกลางด้านบนของพื้นที่วาดภาพ", "ซ่อนอยู่ในเมนู File"], correct: 2 },
+            { q: "ปุ่มใดบนเมาส์ที่ใช้ซูมเข้า/ซูมออก ชิ้นงาน?", options: ["คลิกซ้าย", "คลิกขวา", "หมุนลูกกลิ้งขึ้น/ลง", "คลิกพร้อมกันซ้ายขวา"], correct: 2 },
+            { q: "สัญลักษณ์รูป 'ไฟจราจร' (Rebuild) มีไว้ทำอะไร?", options: ["พักหน้าจอ", "คำนวณและอัปเดตโมเดลใหม่", "ล้างหน้าต่างทำงาน", "บันทึกไฟล์อัตโนมัติ"], correct: 1 },
+            { q: "คีย์ลัดของคำสั่ง Rebuild คือข้อใด?", options: ["Ctrl+S", "Ctrl+Z", "Ctrl+B", "Ctrl+R"], correct: 2 },
+            { q: "ในโหมด Sketch เส้นประ (Centerline) มีไว้ทำอะไรเป็นหลัก?", options: ["เพื่อความสวยงาม", "ใช้เป็นเส้นอ้างอิงหรือแกนหมุน ไม่สร้างความหนา", "เป็นเส้นขอบของวัตถุ 3D", "ใช้แบ่งหน้าจอ"], correct: 1 },
+            { q: "การบอกขนาด (Dimension) ใน SolidWorks เป็นแบบใด?", options: ["แบบอ้างอิงเท่านั้น", "Driving Dimension (เปลี่ยนตัวเลขแล้วขนาดเปลี่ยนตาม)", "แก้ตัวเลขไม่ได้", "ใช้ไม้บรรทัดทาบเอา"], correct: 1 },
+            { q: "คำสั่งใดใช้สร้างส่วนโค้งที่สัมผัสกับเส้นตรงแบบอัตโนมัติ?", options: ["3 Point Arc", "Centerpoint Arc", "Tangent Arc", "Spline"], correct: 2 },
+            { q: "คำสั่ง Mirror Entities ในโหมด Sketch ต้องมีอะไรเป็นตัวสะท้อน (Mirror about)?", options: ["จุดศูนย์กลาง", "Centerline หรือเส้นตรง", "ระนาบ (Plane)", "วงกลม"], correct: 1 },
+            { q: "Offset Entities ในโหมด Sketch ทำหน้าที่อะไร?", options: ["สร้างเส้นขนานจากเส้นหรือขอบที่เลือก", "ลบเส้นทิ้ง", "สะท้อนเส้น", "สร้างวงกลมจากจุดศูนย์กลาง"], correct: 0 },
+            { q: "Trim Entities ทำหน้าที่อะไร?", options: ["ยืดเส้นให้ยาวขึ้น", "เปลี่ยนสีเส้น", "ลบมุมของสี่เหลี่ยม", "ตัดเส้นส่วนเกินออก"], correct: 3 },
+            { q: "Convert Entities ทำหน้าที่อะไร?", options: ["เปลี่ยนหน่วยวัด", "แปลงไฟล์เป็น AutoCAD", "คัดลอกขอบจากผิว 3D มาไว้ในระนาบ Sketch ปัจจุบัน", "เปลี่ยนเส้นทึบเป็นเส้นประ"], correct: 2 },
+            { q: "Geometric Relations คืออะไร?", options: ["การใส่สี", "ความสัมพันธ์ทางเรขาคณิต (เช่น ขนาน, ตั้งฉาก)", "การกำหนดวัสดุ", "การประกอบชิ้นส่วน"], correct: 1 },
+            { q: "Relation แบบ 'Coincident' ทำหน้าที่อะไร?", options: ["ให้เส้นขนานกัน", "ให้วงกลมเท่ากัน", "ให้จุด 2 จุดทับกันหรือจุดอยู่บนเส้น", "ให้เส้นตั้งฉากกัน"], correct: 2 },
+            { q: "Relation แบบ 'Concentric' ทำหน้าที่อะไร?", options: ["ให้ทรงกลมใหญ่ขึ้น", "ให้วงกลมมีจุดศูนย์กลางเดียวกัน", "ให้เส้นตรงยาวเท่ากัน", "ให้ความโค้งต่อเนื่องกัน"], correct: 1 },
+            { q: "Relation แบบ 'Collinear' ทำหน้าที่อะไร?", options: ["ให้จุดศูนย์กลางทับกัน", "ให้เส้นโค้งแนบกัน", "ให้เส้นตรง 2 เส้นอยู่ในแนวเส้นเดียวกัน", "ทำให้เส้นเป็นมุม 45 องศา"], correct: 2 },
+            { q: "Relation แบบ 'Coradial' ทำหน้าที่อะไร?", options: ["ให้เส้นตรงเท่ากัน", "ให้ระนาบขนานกัน", "ให้ส่วนโค้งหรือวงกลมมีรัศมีและจุดศูนย์กลางเดียวกัน", "ให้ขอบชิ้นงานลบมุม"], correct: 2 },
+            { q: "สถานะเส้น Sketch ที่สมบูรณ์แบบเรียกว่าอะไร?", options: ["Under Defined", "Fully Defined", "Over Defined", "Dangling"], correct: 1 },
+            { q: "เส้น Sketch ที่มีสถานะ 'Fully Defined' จะแสดงเป็นสีอะไร (ค่าเริ่มต้น)?", options: ["น้ำเงิน", "เหลือง", "แดง", "ดำ"], correct: 3 },
+            { q: "เส้น Sketch ที่มีสถานะ 'Under Defined' ขยับได้ จะแสดงเป็นสีอะไร?", options: ["น้ำเงิน", "เขียว", "ดำ", "แดง"], correct: 0 },
+            { q: "เส้น Sketch ที่มีสถานะ 'Over Defined' (ให้ขนาดซ้ำซ้อน) จะแสดงเป็นสีอะไร?", options: ["เขียว/น้ำเงิน", "ดำ", "แดง/เหลือง", "เทา"], correct: 2 },
+            { q: "คำสั่งใดใช้สร้างความหนา 3 มิติจาก Sketch แบบยืดตรงๆ?", options: ["Revolved Boss", "Extruded Boss/Base", "Swept Boss", "Lofted Boss"], correct: 1 },
+            { q: "คำสั่ง Revolve ต้องมีองค์ประกอบสำคัญอะไรใน Sketch?", options: ["วงกลม 2 วง", "เส้นสี่เหลี่ยม 1 เส้น", "พื้นที่ปิด และ แกนหมุน (Axis/Centerline)", "จุด 3 จุด"], correct: 2 },
+            { q: "ในคำสั่ง Extrude ตัวเลือก 'Blind' หมายถึงอะไร?", options: ["ทะลุทั้งหมด", "กำหนดความลึกด้วยการพิมพ์ตัวเลข", "ไปจนถึงผิวถัดไป", "ยืดออก 2 ด้าน"], correct: 1 },
+            { q: "ในคำสั่ง Extrude ตัวเลือก 'Up To Next' หมายถึงอะไร?", options: ["ยืดแบบเดาสุ่ม", "ยืดไป 10 มิลลิเมตร", "ยืดเนื้อไปจนชนผิวถัดไปที่ขวางอยู่", "เจาะรูทะลุจอ"], correct: 2 },
+            { q: "ในคำสั่ง Extrude ตัวเลือก 'Mid Plane' หมายถึงอะไร?", options: ["ยืดออก 2 ด้านเท่าๆ กันจากระนาบ Sketch", "ยืดไปตรงกลางชิ้นงาน", "สร้างระนาบใหม่", "ลบเนื้อตรงกลางทิ้ง"], correct: 0 },
+            { q: "Feature 'Extruded Cut' มีไว้ทำอะไร?", options: ["ตัดเส้น Sketch", "เจาะหรือตัดเนื้อวัสดุ 3 มิติออกในแนวตรง", "เพิ่มเนื้อเหล็ก", "แยกชิ้นส่วน"], correct: 1 },
+            { q: "Feature 'Revolved Cut' มีไว้ทำอะไร?", options: ["เจาะหรือตัดเนื้อวัสดุออกแบบหมุนรอบแกน", "ลบมุมขอบ 3D", "ซ่อนชิ้นงาน", "กางชิ้นงานออก"], correct: 0 },
+            { q: "Fillet ในโหมด 3D ทำหน้าที่อะไร?", options: ["เจาะรู", "สร้างส่วนโค้งลบมุมตามขอบชิ้นงาน", "เปลี่ยนสีพื้นผิว", "ตัดหน้าเรียบ"], correct: 1 },
+            { q: "Chamfer ทำหน้าที่อะไร?", options: ["ลบมุมให้เป็นส่วนโค้งกลม", "คว้านเนื้อด้านใน", "ตัดขอบมุมให้เป็นระนาบเอียง(เหลี่ยมตัด)", "เพิ่มความหนาแผ่นโลหะ"], correct: 2 },
+            { q: "Shell ทำหน้าที่อะไร?", options: ["ทำผิวให้มันวาว", "ลบมุม", "แปลงเป็นรูปแบบหอย", "คว้านเนื้อในออกให้เป็นเปลือกบางๆ ที่มีความหนาสม่ำเสมอ"], correct: 3 },
+            { q: "คำสั่ง Draft ทำหน้าที่อะไร?", options: ["วาดเส้นร่าง", "บันทึกแบบร่าง", "ทำมุมเท/มุมเอียงให้กับพื้นผิว", "คำนวณน้ำหนักชิ้นงาน"], correct: 2 },
+            { q: "Loft (Lofted Boss/Base) ต้องใช้ Sketch อย่างน้อยกี่หน้าตัด?", options: ["1 หน้าตัด", "2 หน้าตัดขึ้นไปในระนาบที่ต่างกัน", "ไม่จำเป็นต้องมี Sketch", "ใช้เส้นเดียว"], correct: 1 },
+            { q: "Sweep (Swept Boss/Base) ต้องมีองค์ประกอบสำคัญใดบ้าง?", options: ["หน้าตัด (Profile) และ เส้นทาง (Path)", "แกนหมุน 2 แกน", "ผิวโค้งและจุด", "ระนาบ 3 ระนาบ"], correct: 0 },
+            { q: "Feature 'Rib' นิยมนำมาใช้ทำอะไร?", options: ["เจาะเกลียว", "สร้างครีบเสริมความแข็งแรงให้ชิ้นงาน", "ทำให้ชิ้นงานกลวง", "พับแผ่นเหล็ก"], correct: 1 },
+            { q: "คำสั่งใดใช้เจาะรูมาตรฐาน (เช่น รูต๊าปเกลียว, รูฝังหัวน็อต)?", options: ["Simple Hole", "Hole Wizard", "Extruded Cut", "Swept Cut"], correct: 1 },
+            { q: "การทำลวดลายซ้ำๆ แบบวงกลมใช้คำสั่งใด?", options: ["Linear Pattern", "Mirror", "Circular Pattern", "Curve Driven Pattern"], correct: 2 },
+            { q: "การทำลวดลายซ้ำๆ แบบเส้นตรงใช้คำสั่งใด?", options: ["Circular Pattern", "Mirror", "Sketch Driven Pattern", "Linear Pattern"], correct: 3 },
+            { q: "Plane พื้นฐาน 3 ระนาบที่โปรแกรมให้มาแต่แรกมีอะไรบ้าง?", options: ["Top, Bottom, Left", "Front, Top, Right", "X, Y, Z", "Horizontal, Vertical, Depth"], correct: 1 },
+            { q: "นามสกุลไฟล์ชิ้นงานเดี่ยว (Part) ของ SolidWorks คืออะไร?", options: [".slddrw", ".dwg", ".sldprt", ".sldasm"], correct: 2 },
+            { q: "นามสกุลไฟล์งานประกอบ (Assembly) ของ SolidWorks คืออะไร?", options: [".sldasm", ".sldprt", ".step", ".pdf"], correct: 0 },
+            { q: "นามสกุลไฟล์แบบสั่งงาน 2 มิติ (Drawing) ของ SolidWorks คืออะไร?", options: [".sldprt", ".sldasm", ".dwg", ".slddrw"], correct: 3 },
+            { q: "การนำชิ้นส่วนหลายๆ ชิ้นมาประกอบกัน ต้องทำในโหมดใด?", options: ["Part", "Drawing", "Assembly", "Simulation"], correct: 2 },
+            { q: "คำสั่งใดใช้กำหนดความสัมพันธ์(จุดเชื่อมต่อ) ระหว่างชิ้นงานในโหมด Assembly?", options: ["Mate", "Join", "Combine", "Attach"], correct: 0 },
+            { q: "ชิ้นส่วนแรกสุดที่ดึงเข้ามาใน Assembly จะมีสถานะเป็นอย่างไร?", options: ["ลอยไปมาได้ بحرية", "Fixed (ล็อคตำแหน่งขยับไม่ได้)", "ซ่อนอยู่", "Under Defined"], correct: 1 },
+            { q: "สัญลักษณ์ (f) หน้าชื่อชิ้นส่วนใน Assembly หมายความว่าอะไร?", options: ["Flexible", "Fixed (ล็อคอยู่)", "Floating", "Failed"], correct: 1 },
+            { q: "สัญลักษณ์ (-) หน้าชื่อชิ้นส่วนใน Assembly หมายความว่าอะไร?", options: ["Under Defined (ยังขยับ/หมุนได้)", "ลบออกไปแล้ว", "ซ่อนอยู่", "Over Defined"], correct: 0 },
+            { q: "หากต้องการปลดล็อคชิ้นส่วนแรกใน Assembly ให้ขยับได้ ต้องคลิกขวาแล้วเลือกข้อใด?", options: ["Unfix", "Move", "Float", "Release"], correct: 2 },
+            { q: "Mate แบบ 'Coincident' ทำหน้าที่อะไร?", options: ["ให้พื้นผิว 2 ชิ้นแนบติดกันหรืออยู่ในระนาบเดียวกัน", "ให้ศูนย์กลางตรงกัน", "จำกัดระยะการเคลื่อนที่", "สร้างมุม 45 องศา"], correct: 0 },
+            { q: "Mate แบบ 'Concentric' ทำหน้าที่อะไร?", options: ["ล็อกระยะห่าง", "ให้ทรงกระบอกหรือวงกลมมีจุดศูนย์กลางร่วมกัน", "ให้เฟืองหมุนขบกัน", "ให้ขนานกัน"], correct: 1 },
+            { q: "Advanced Mate: 'Width' มีประโยชน์เพื่ออะไร?", options: ["ยืดความกว้างชิ้นงาน", "วัดขนาด", "จัดวางชิ้นส่วนให้อยู่กึ่งกลางระหว่าง 2 ผิวอ้างอิงพอดี", "กำหนดระยะเคลื่อนที่สูงสุด"], correct: 2 },
+            { q: "การตรวจสอบว่าชิ้นส่วนใน Assembly ชนหรือทับซ้อนกันหรือไม่ ใช้คำสั่งใด?", options: ["Measure", "Mass Properties", "Interference Detection", "Section View"], correct: 2 },
+            { q: "Exploded View ในโหมด Assembly ทำหน้าที่อะไร?", options: ["ระเบิดชิ้นงานให้พังทลาย", "สร้างภาพแยกส่วนประกอบให้ดูว่าประกอบเข้ากันอย่างไร", "ตัดหน้าตัดชิ้นงาน", "คำนวณการชน"], correct: 1 },
+            { q: "โหมด Drawing ใน SolidWorks ใช้ทำอะไร?", options: ["สร้างแบบแปลน 2 มิติเพื่ออ้างอิงและสั่งผลิต", "เรนเดอร์ภาพสวยงาม", "จำลองการรับแรง", "แปลงไฟล์เป็น 3D"], correct: 0 },
+            { q: "View มาตรฐาน (Standard 3 View) มักประกอบด้วยมุมมองใดบ้าง?", options: ["Front, Top, Right", "Top, Bottom, Back", "Isometric, Dimetric, Trimetric", "Section, Detail, Crop"], correct: 0 },
+            { q: "Section View ใน Drawing คืออะไร?", options: ["ภาพขยาย", "ภาพรวม", "ภาพฉายหน้าตัดที่ถูกผ่าให้เห็นด้านใน", "ภาพสามมิติ"], correct: 2 },
+            { q: "Detail View ใน Drawing คืออะไร?", options: ["ภาพแสดงตารางวัสดุ", "ภาพฉายหน้าตัด", "ภาพจำลองการเคลื่อนไหว", "ภาพวงกลมขยายรายละเอียดเฉพาะจุดที่เล็กเกินไป"], correct: 3 },
+            { q: "Bill of Materials (BOM) ใน Drawing คืออะไร?", options: ["ตารางรายการชิ้นส่วนที่ใช้ใน Assembly", "ตารางคำนวณราคา", "ตารางบันทึกการแก้ไข", "รายการวัสดุที่ต้องซื้อเท่านั้น"], correct: 0 },
+            { q: "Balloons ใน Drawing มีไว้เพื่ออะไร?", options: ["ตกแต่งให้สวยงาม", "ชี้บอกหมายเลขชิ้นส่วน (Item No.) ให้ตรงกับตาราง BOM", "ระบุค่าความเรียบผิว", "วงกลมเน้นจุดผิดพลาด"], correct: 1 },
+            { q: "คีย์ลัด Ctrl+8 ใน SolidWorks ใช้ทำอะไร?", options: ["บันทึกไฟล์", "Normal To (มองตั้งฉากกับระนาบ/ผิวที่เลือก)", "เปลี่ยนหน้าต่าง", "ปิดโปรแกรม"], correct: 1 },
+            { q: "คีย์ลัด Ctrl+7 ใน SolidWorks ใช้ทำอะไร?", options: ["สร้างไฟล์ใหม่", "หมุนหน้าจอ 90 องศา", "แสดงภาพแบบ Isometric View", "ซูมให้พอดีจอ"], correct: 2 },
+            { q: "การเลื่อนหน้าจอ (Pan) โดยใช้เมาส์ทำได้อย่างไร?", options: ["คลิกซ้ายแล้วลาก", "กด Ctrl ค้าง + กดลูกกลิ้งเมาส์ค้างแล้วลาก", "หมุนลูกกลิ้งรัวๆ", "กด Shift + คลิกขวา"], correct: 1 },
+            { q: "การหมุนมุมมอง (Rotate) โดยใช้เมาส์ทำได้อย่างไร?", options: ["กดลูกกลิ้งเมาส์ค้างแล้วลาก", "คลิกซ้ายค้าง", "คลิกขวาค้าง", "กด Alt ค้าง + คลิกซ้าย"], correct: 0 },
+            { q: "คำสั่งใดใช้วัดระยะห่าง ความยาว หรือพื้นที่ของชิ้นงาน?", options: ["Dimension", "Measure (รูปตลับเมตร)", "Scale", "Ruler"], correct: 1 },
+            { q: "เครื่องมือ Mass Properties ใช้ดูข้อมูลใดได้บ้าง?", options: ["ชื่อสีที่ใช้", "เวลาที่ใช้ในการวาด", "น้ำหนัก, จุดศูนย์ถ่วง, ปริมาตร", "ราคาสินค้า"], correct: 2 },
+            { q: "ไฟล์มาตรฐานกลางใดที่นิยมใช้แลกเปลี่ยนข้อมูล 3D ข้ามโปรแกรมหรือส่งไปเครื่อง CNC?", options: [".step หรือ .igs", ".pdf", ".txt", ".xlsx"], correct: 0 },
+            { q: "ไฟล์ชนิดใดที่ต้อง Export เพื่อส่งชิ้นงานไปปรินต์ 3D (3D Printing)?", options: [".doc", ".stl", ".prt", ".xml"], correct: 1 },
+            { q: "Sheet Metal Feature 'Base Flange/Tab' ทำหน้าที่อะไร?", options: ["พับมุม 90 องศา", "สร้างก้อนเหล็กทึบ", "สร้างแผ่นโลหะความหนาสม่ำเสมอเป็นจุดเริ่มต้น", "ตัดโลหะออก"], correct: 2 },
+            { q: "การแผ่ชิ้นงานพับ (Sheet metal) ให้แบนราบเพื่อหาความยาวแผ่นตัด ใช้คำสั่งใด?", options: ["Unfold หรือ Flatten", "Straighten", "Smooth", "Level"], correct: 0 },
+            { q: "K-Factor ในงานพับ Sheet Metal คืออะไร?", options: ["ความแข็งของโลหะ", "ค่าคงที่ใช้คำนวณตำแหน่งเส้นแกนกลาง (Neutral axis) เวลายืดพับแผ่นเหล็ก", "รหัสสี", "ความหนาของแผ่น"], correct: 1 },
+            { q: "Weldments Feature 'Structural Member' ใช้ทำอะไร?", options: ["เชื่อมเหล็กติดกัน", "ตัดเหล็ก", "สร้างท่อหรือเหล็กโครงสร้างรูปพรรณจากเส้น Sketch", "พับแผ่นโลหะ"], correct: 2 },
+            { q: "Weldments Feature 'Trim/Extend' ใช้ทำอะไร?", options: ["ทำสีโครงเหล็ก", "ตัดต่อรอยต่อท่อ/เหล็กโครงสร้างให้เข้ามุมสนิทกัน", "ต่อท่อให้ยาวไร้ที่สิ้นสุด", "ลบมุมท่อ"], correct: 1 },
+            { q: "การเจาะรูด้วย Hole Wizard มีข้อดีกว่า Extruded Cut อย่างไร?", options: ["รันโปรแกรมได้เร็วกว่า", "โปรแกรมกินสเปคน้อยลง", "เจาะแบบทะลุได้เท่านั้น", "มีมาตรฐานรูให้เลือก (ต๊าปเกลียว, สลัก) และบอกขนาดใน Drawing ง่ายกว่า"], correct: 3 },
+            { q: "Configuration ใน SolidWorks มีประโยชน์อย่างไร?", options: ["เปลี่ยนสีเมนูบาร์", "สร้างชิ้นงานรูปร่างเดิมแต่หลายไซส์/หลายรูปแบบ เก็บไว้ในไฟล์เดียวกันได้", "จัดเรียงหน้าต่างการทำงาน", "ส่งออกไฟล์เป็นรูปภาพ"], correct: 1 },
+            { q: "Design Table ช่วยทำอะไรใน SolidWorks?", options: ["สร้างตาราง BOM", "คำนวณน้ำหนัก", "ใช้ Excel เพื่อควบคุมขนาดของ Configuration ต่างๆ อัตโนมัติ", "วางแผนการผลิต"], correct: 2 },
+            { q: "Equations ใน SolidWorks ใช้ทำอะไร?", options: ["พิมพ์รายงานคณิตศาสตร์", "ผูกสูตรและสมการเพื่อควบคุมความสัมพันธ์ของขนาดต่างๆ", "สร้างกราฟเส้น", "หาพื้นที่ผิว"], correct: 1 },
+            { q: "Global Variables คืออะไร?", options: ["ตัวแปรที่ใช้กับไฟล์อื่นได้ทั่วโลก", "ชื่อผู้สร้างไฟล์", "ตัวแปรกลางที่เก็บค่าตัวเลข เพื่อนำไปใช้อ้างอิงกับหลายๆ ขนาดในชิ้นงาน", "ระบบพิกัดโลก"], correct: 2 },
+            { q: "การกำหนด Material (วัสดุ) ให้ชิ้นงานมีผลต่อฟังก์ชันใดมากที่สุด?", options: ["การบอกขนาด (Dimension)", "ความเร็วในการหมุนจอ", "Mass Properties (การหาค่าน้ำหนักที่ถูกต้อง)", "รูปแบบสีพื้นหลัง"], correct: 2 },
+            { q: "เครื่องมือ Simulation Express ใช้ทำอะไร?", options: ["จำลองการประกอบชิ้นส่วน", "ประเมินความแข็งแรง ความเครียด และระยะแอ่นตัวของชิ้นส่วนเบื้องต้น", "ทำ Animation วิดีโอ", "จำลองการไหลของอากาศ"], correct: 1 },
+            { q: "โปรแกรมเสริม PhotoView 360 หรือ SOLIDWORKS Visualize ใช้ทำอะไร?", options: ["ดูรูปภาพ 2 มิติ", "ปรับสีหน้าจอ", "Render ชิ้นงานให้ดูสวยงามสมจริงเหมือนภาพถ่าย", "บันทึกหน้าจอคอม"], correct: 2 },
+            { q: "การซ่อน (Hide) ชิ้นส่วนใน Assembly มีผลอย่างไร?", options: ["ลบชิ้นส่วนนั้นทิ้งถาวร", "ชิ้นส่วนแค่หายไปจากหน้าจอแต่ยังถูกนำมาคำนวณน้ำหนักอยู่", "ชิ้นส่วนหยุดทำงาน", "ไฟล์มีขนาดเล็กลง"], correct: 1 },
+            { q: "การทำ 'Suppress' ชิ้นส่วนใน Assembly มีผลอย่างไร?", options: ["ชิ้นส่วนถูกปิดการทำงาน ไม่แสดงผลและไม่ถูกนำมาคำนวณใดๆ เหมือนถูกถอดออกชั่วคราว", "เหมือนการ Hide ทุกประการ", "ขยายขนาดชิ้นงาน", "บังคับเซฟไฟล์"], correct: 0 },
+            { q: "โหมด 'Lightweight' ใน Assembly มีไว้เพื่ออะไร?", options: ["ทำให้สีสว่างขึ้น", "ลบชิ้นส่วนบางชิ้น", "โหลดเฉพาะข้อมูลเรขาคณิตที่จำเป็นเพื่อลดการกินสเปคคอม(แรม) ทำให้เปิดไฟล์ใหญ่ๆ ได้เร็วขึ้น", "ทำให้ชิ้นงานโปร่งแสง"], correct: 2 },
+            { q: "Large Assembly Mode จะทำงานโดยอัตโนมัติเมื่อใด?", options: ["เมื่อเปิดโปรแกรมตอนเช้า", "เมื่อประกอบชิ้นส่วนที่มีสีดำ", "เมื่อจำนวนชิ้นส่วนใน Assembly มากเกินจำนวนที่ตั้งค่าไว้ (เช่น 500 ชิ้น)", "เมื่อเปิดไฟล์เก่า"], correct: 2 },
+            { q: "ใน FeatureManager Design Tree การลากเส้น Rollback Bar (เส้นสีน้ำเงิน) ขยับขึ้น มีผลอย่างไร?", options: ["ย้อนเวลาโมเดลกลับไปสู่สถานะก่อนที่จะสร้าง Feature ที่อยู่ใต้เส้น", "ลบ Feature ทิ้ง", "สร้างโฟลเดอร์", "เลื่อนหน้าจอ"], correct: 0 },
+            { q: "คำว่า 'Parent/Child Relationship' ใน SolidWorks หมายถึงอะไร?", options: ["ลิขสิทธิ์ซอฟต์แวร์", "การนำไฟล์ของเพื่อนมาใช้", "ความสัมพันธ์ระหว่าง Feature ที่ต้องอ้างอิงซึ่งกันและกัน (Feature ลูกเกิดไม่ได้ถ้าไม่มี Feature แม่)", "การจัดการโปรเจกต์"], correct: 2 },
+            { q: "ถ้าคุณลบ 'Parent' Feature ไป (เช่น ลบก้อนสี่เหลี่ยมที่เป็นฐาน) 'Child' Feature (เช่น รูเจาะบนก้อนนั้น) จะเป็นอย่างไร?", options: ["รอดชีวิตปกติ", "Child Feature จะขยายขนาดชดเชย", "ลอยตัวเป็นอิสระ", "Child Feature จะมีปัญหา (Error) ขาดที่อ้างอิง หรือถูกลบตามไปด้วย"], correct: 3 },
+            { q: "การนำไฟล์รูปภาพ (.jpg) เข้ามาร่างแบบทับ (Trace) ต้องใช้คำสั่งใดในโหมด Sketch?", options: ["Insert Image", "Sketch Picture", "Background Image", "Render Picture"], correct: 1 },
+            { q: "ไฟล์ Part 1 ไฟล์ สามารถทำเป็น Multibody Part (มีหลายก้อนเนื้อเหล็กไม่ติดกัน) ได้หรือไม่?", options: ["ไม่ได้เด็ดขาด 1 Part ต้องมี 1 ก้อนเสมอ", "ได้ เรียกว่า Multibody Part", "ได้เฉพาะโหมด Sheet Metal", "ต้องซื้อปลั๊กอินเพิ่ม"], correct: 1 },
+            { q: "'Selection Filter' มีประโยชน์อย่างไรเวลาทำงานกับโมเดลที่ซับซ้อน?", options: ["เปลี่ยนสีชิ้นส่วน", "คัดกรองขนาดไฟล์", "กรองการคลิกเมาส์ให้จับเฉพาะสิ่งที่เราต้องการ เช่น จับเฉพาะผิว (Faces) หรือเส้น (Edges)", "ช่วยให้คอมพิวเตอร์เร็วขึ้น"], correct: 2 },
+            { q: "หากต้องการตั้งค่าหน่วยวัดเริ่มต้นให้กับโปรแกรมทุกครั้งที่เปิดขึ้นมาใหม่ ต้องตั้งค่าที่ใด?", options: ["File -> Save As", "ไปแก้ใน Document Properties แล้วบันทึกไฟล์นั้นเป็น Template (.prtdot)", "เปลี่ยนภาษา", "ติดตั้งโปรแกรมใหม่"], correct: 1 },
+            { q: "หากต้องการปรับแต่งคีย์ลัดบนคีย์บอร์ด (Keyboard Shortcuts) ด้วยตนเอง ต้องไปที่เมนูใด?", options: ["File -> Properties", "Edit -> Shortcuts", "Tools -> Customize -> Keyboard", "View -> Toolbars"], correct: 2 }
+        ];
+
+        document.getElementById('display-total-start').innerText = masterQuestions.length;
+
+        // ==========================================
+        // การตั้งค่า Firebase 
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyA4rm4t6BDl-rA83wxHK1AP3CW3c9-G6xo",
+            authDomain: "solidworksquiz.firebaseapp.com",
+            projectId: "solidworksquiz",
+            storageBucket: "solidworksquiz.firebasestorage.app",
+            messagingSenderId: "193698389533",
+            appId: "1:193698389533:web:3ffcd05ee183541eb1b0f4",
+            measurementId: "G-VX48FNMFQ2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = 'solidworks-quiz-v1';
+
+        let isFirebaseActive = false;
+        let currentUser = null;
+        let score = 0;
+        let currentIdx = 0;
+        let startTime, timerInterval;
+        let cheatCount = 0;
+        let selectedOption = null;
+        let selectedQuestions = [];
+        let allAdminData = [];
+
+        // เริ่มเชื่อมต่อ
+        async function init() {
+            try {
+                const skipTimeout = setTimeout(() => {
+                    if (!isFirebaseActive) document.getElementById('btn-skip-loading').classList.remove('hidden');
+                }, 5000);
+
+                await signInAnonymously(auth);
+                
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        clearTimeout(skipTimeout);
+                        currentUser = user;
+                        isFirebaseActive = true;
+                        document.getElementById('loading-screen').classList.add('hidden');
+                        document.getElementById('start-page').classList.remove('hidden');
+                        document.getElementById('db-status').innerText = "Firebase Status: Online ✅";
+                    }
+                });
+            } catch (e) {
+                console.error("Firebase Connection Failed:", e);
+                isFirebaseActive = false;
+                document.getElementById('loading-screen').classList.add('hidden');
+                document.getElementById('start-page').classList.remove('hidden');
+                document.getElementById('db-status').innerText = "Firebase Status: Offline ❌ (ใช้งานแบบไม่บันทึกออนไลน์)";
+                document.getElementById('db-status').classList.replace('text-green-500', 'text-red-500');
+            }
+        }
+
+        // ==========================================
+        // ระบบทำข้อสอบ
+        // ==========================================
+        document.getElementById('btn-start').onclick = () => {
+            const name = document.getElementById('student-name').value.trim();
+            const sid = document.getElementById('student-id').value.trim();
+            if (!name || !sid) return alert("กรุณาระบุชื่อและรหัสนักศึกษา");
+
+            selectedQuestions = [...masterQuestions].sort(() => Math.random() - 0.5);
+            document.getElementById('total-questions-num').innerText = ` / ${selectedQuestions.length}`;
+            
+            document.getElementById('start-page').classList.add('hidden');
+            document.getElementById('quiz-page').classList.remove('hidden');
+            
+            startTime = new Date();
+            timerInterval = setInterval(updateTimer, 1000);
+            displayQuestion();
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden && !document.getElementById('quiz-page').classList.contains('hidden')) {
+                    cheatCount++;
+                    document.getElementById('cheat-modal').classList.remove('hidden');
+                }
+            });
+        };
+
+        function updateTimer() {
+            const diff = new Date(new Date() - startTime);
+            const m = String(diff.getUTCMinutes()).padStart(2, '0');
+            const s = String(diff.getUTCSeconds()).padStart(2, '0');
+            document.getElementById('timer').innerText = `${m}:${s}`;
+        }
+
+        function displayQuestion() {
+            const data = selectedQuestions[currentIdx];
+            const btnNext = document.getElementById('btn-next');
+            
+            document.getElementById('current-question-num').innerText = currentIdx + 1;
+            document.getElementById('question-text').innerText = data.q;
+            
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+            selectedOption = null;
+            
+            btnNext.disabled = true;
+            btnNext.className = "w-full bg-slate-700 text-slate-400 font-bold py-4 rounded-xl cursor-not-allowed opacity-50 transition-all duration-300";
+            btnNext.innerText = "กรุณาเลือกคำตอบ";
+
+            data.options.forEach((opt, i) => {
+                const b = document.createElement('button');
+                b.className = "w-full text-left p-4 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-xl transition-all font-sarabun cursor-pointer";
+                b.innerText = opt;
+                b.onclick = () => {
+                    Array.from(container.children).forEach(c => c.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-900/20'));
+                    b.classList.add('ring-2', 'ring-blue-500', 'bg-blue-900/20');
+                    selectedOption = i;
+                    
+                    btnNext.disabled = false;
+                    
+                    if (currentIdx === selectedQuestions.length - 1) {
+                        btnNext.className = "w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl cursor-pointer shadow-lg transform active:scale-95 transition-all duration-300";
+                        btnNext.innerText = "ส่งคำตอบทั้งหมด";
+                    } else {
+                        btnNext.className = "w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl cursor-pointer shadow-lg transform active:scale-95 transition-all duration-300";
+                        btnNext.innerText = "ข้อถัดไป";
+                    }
+                };
+                container.appendChild(b);
+            });
+        }
+
+        document.getElementById('btn-next').onclick = async () => {
+            if (selectedOption === null) return;
+            if (selectedOption === selectedQuestions[currentIdx].correct) score++;
+            
+            if (currentIdx < selectedQuestions.length - 1) {
+                currentIdx++;
+                displayQuestion();
+            } else {
+                await finishQuiz();
+            }
+        };
+
+        async function finishQuiz() {
+            clearInterval(timerInterval);
+            document.getElementById('quiz-page').classList.add('hidden');
+            document.getElementById('loading-screen').classList.remove('hidden');
+            document.getElementById('loading-text').innerText = "กำลังจัดเก็บผลการสอบลงเซิร์ฟเวอร์...";
+
+            const name = document.getElementById('student-name').value;
+            const sid = document.getElementById('student-id').value;
+            const timeTaken = document.getElementById('timer').innerText;
+
+            let saved = false;
+            if (isFirebaseActive && currentUser) {
+                try {
+                    const resultRef = collection(db, 'artifacts', appId, 'public', 'data', 'exam_results');
+                    await addDoc(resultRef, {
+                        student_name: name,
+                        student_id: sid.toString(),
+                        score: score,
+                        total_score: selectedQuestions.length,
+                        time_taken: timeTaken,
+                        cheating_attempts: cheatCount,
+                        timestamp: serverTimestamp(),
+                        uid: currentUser.uid
+                    });
+                    saved = true;
+                } catch (e) {
+                    console.error("Firebase Store Error:", e);
+                }
+            }
+
+            document.getElementById('res-name').innerText = name;
+            document.getElementById('res-id').innerText = sid;
+            document.getElementById('res-score').innerText = score;
+            document.getElementById('res-total').innerText = selectedQuestions.length;
+            
+            const statusEl = document.getElementById('save-status');
+            if (saved) {
+                statusEl.innerText = "✅ บันทึกข้อมูลเข้าส่วนกลางเรียบร้อยแล้ว อาจารย์สามารถตรวจสอบได้";
+                statusEl.className = "text-sm text-green-400 mb-4 font-semibold";
+            } else {
+                statusEl.innerText = "⚠️ ไม่สามารถบันทึกออนไลน์ได้";
+                statusEl.className = "text-sm text-red-400 mb-4 font-bold";
+            }
+
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('result-page').classList.remove('hidden');
+        }
+
+        // ==========================================
+        // ระบบ Admin (ดึงข้อมูลทั้งหมดมาลงตาราง และ Excel)
+        // ==========================================
+        document.getElementById('btn-admin-login').onclick = () => {
+            const pwd = prompt("กรุณาใส่รหัสผ่านผู้สอน:");
+            // รหัสผ่านคือ admin123 (สามารถเปลี่ยนในโค้ดได้)
+            if (pwd === "admin123") {
+                document.getElementById('start-page').classList.add('hidden');
+                document.getElementById('admin-page').classList.remove('hidden');
+                loadAdminData();
+            } else if (pwd !== null) {
+                alert("รหัสผ่านไม่ถูกต้อง");
+            }
+        };
+
+        document.getElementById('btn-close-admin').onclick = () => {
+            document.getElementById('admin-page').classList.add('hidden');
+            document.getElementById('start-page').classList.remove('hidden');
+        };
+
+        document.getElementById('btn-refresh-data').onclick = () => loadAdminData();
+
+        async function loadAdminData() {
+            if (!isFirebaseActive || !currentUser) {
+                alert("ไม่ได้เชื่อมต่อ Firebase");
+                return;
+            }
+            
+            const tbody = document.getElementById('admin-table-body');
+            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-blue-400 animate-pulse">กำลังโหลดข้อมูลจาก Firebase...</td></tr>';
+            
+            try {
+                // ดึงข้อมูลทั้งหมดจาก Collection
+                const querySnapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'exam_results'));
+                allAdminData = [];
+                
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    allAdminData.push({
+                        id: doc.id,
+                        ...data,
+                        // แปลง Timestamp ของ Firebase เป็น JS Date
+                        jsDate: data.timestamp ? new Date(data.timestamp.seconds * 1000) : new Date() 
+                    });
+                });
+
+                // เรียงลำดับจากเวลาส่งล่าสุดไปเก่าสุด
+                allAdminData.sort((a, b) => b.jsDate - a.jsDate);
+                renderAdminTable();
+
+            } catch (error) {
+                console.error("Error fetching admin data: ", error);
+                tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-red-400">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
+            }
+        }
+
+        function renderAdminTable() {
+            const tbody = document.getElementById('admin-table-body');
+            tbody.innerHTML = '';
+
+            if (allAdminData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-slate-500">ยังไม่มีข้อมูลการสอบ</td></tr>';
+                return;
+            }
+
+            allAdminData.forEach(item => {
+                const dateStr = item.jsDate.toLocaleString('th-TH');
+                const row = document.createElement('tr');
+                row.className = "hover:bg-slate-700/50 transition-colors";
+                row.innerHTML = `
+                    <td class="p-3 border-b border-slate-700/50">${dateStr}</td>
+                    <td class="p-3 border-b border-slate-700/50 font-mono text-blue-300">${item.student_id}</td>
+                    <td class="p-3 border-b border-slate-700/50">${item.student_name}</td>
+                    <td class="p-3 border-b border-slate-700/50 font-bold text-green-400">${item.score}/${item.total_score}</td>
+                    <td class="p-3 border-b border-slate-700/50 text-slate-400">${item.time_taken}</td>
+                    <td class="p-3 border-b border-slate-700/50 text-red-400">${item.cheating_attempts || 0}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Export All Data to Excel (จัดกลุ่มตามวันได้ใน Excel)
+        document.getElementById('btn-export-all').onclick = () => {
+            if (allAdminData.length === 0) return alert("ไม่มีข้อมูลให้ดาวน์โหลด");
+
+            // สร้าง Header ให้กับ Excel
+            const sheetData = [
+                ["วันที่และเวลาส่ง", "รหัสนักศึกษา", "ชื่อ-นามสกุล", "คะแนนที่ได้", "คะแนนเต็ม", "เวลาที่ใช้", "จำนวนครั้งที่สลับหน้าจอ"]
+            ];
+
+            // วนลูปยัดข้อมูลลง Array
+            allAdminData.forEach(item => {
+                sheetData.push([
+                    item.jsDate.toLocaleString('th-TH'), // จะจัดกลุ่มใน Excel ได้ง่ายเพราะมีวัน/เวลา
+                    item.student_id,
+                    item.student_name,
+                    item.score,
+                    item.total_score,
+                    item.time_taken,
+                    item.cheating_attempts || 0
+                ]);
+            });
+
+            // สร้าง Workbook และ Sheet
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(sheetData);
+            
+            // ปรับความกว้างคอลัมน์
+            ws['!cols'] = [{wch: 25}, {wch: 15}, {wch: 30}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 25}];
+
+            XLSX.utils.book_append_sheet(wb, ws, "สรุปผลสอบทั้งหมด");
+            XLSX.writeFile(wb, `รายงานผลสอบ_SolidWorks_${new Date().toLocaleDateString('th-TH').replace(/\//g, '-')}.xlsx`);
+        };
+
+        document.getElementById('btn-skip-loading').onclick = () => {
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('start-page').classList.remove('hidden');
+        };
+
+        init();
+    </script>
+</body>
+</html>
